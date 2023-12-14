@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notes App</title>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
+</head>
+
+<body>
+    <div class="h-screen overflow-hidden bg-gray-100 flex justify-center">
+        <div class="max-w-4xl w-full">
+            <main class="border-t border-gray-200 flex overflow-hidden pt-32">
+                <div class="flex-1 overflow-y-scroll bg-white">
+                    <div x-data class="p-6 flex flex-col">
+                        <!-- Input and textarea fields -->
+                        <input x-on:keyup.debounce.200="$store.notes.updateCurrentNoteTimeStamp()"
+                            x-model="$store.notes.currentNoteData.title" type="text"
+                            class="text-lg font-medium text-purple-600 w-full mb-6" placeholder="Untitled note">
+
+                        <textarea x-on:keyup.debounce.200="$store.notes.updateCurrentNoteTimeStamp()"
+                            x-model="$store.notes.currentNoteData.body"
+                            class="w-full mb-6 flex-1 text-gray-900 outline-none" placeholder="Start writing..."
+                            autofocus></textarea>
+
+                        <!-- Delete button -->
+                        <div>
+                            <button x-on:click="if (window.confirm('Are you sure?')) {$store.notes.deleteNote()}"
+                                class="text-sm text-white bg-red-600 hover:bg-red-700 font-bold py-2 px-4 rounded">
+                                Delete note
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sidebar -->
+                <aside class="flex-shrink-0 w-96 border-r border-gray-700 bg-gray-100">
+                    <div x-data class="flex-shrink-0 h-16 bg-white px-6 flex flex-col justify-center">
+                        <div class="flex justify-between space-x-3">
+                            <div class="flex items-baseline">
+                                <h2 class="text-lg font-medium text-gray-900 mr-3">
+                                   Total Notes (<span x-text="$store.notes.data.length"></span>)
+                                </h2>
+                            </div>
+                            <button x-on:click="$store.notes.createNote()"
+                                class="text-sm bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">
+                                New note
+                            </button>
+                        </div>
+                    </div>
+                    <!-- List of notes -->
+                    <nav class="min-h-0 flex-1 overflow-y-auto" style="max-height: 300px;">
+                        <ul x-data class="border-b border-gray-200 divide-y divide-gray-200">
+                            <template x-for="(note,index) in $store.notes.orderedByLastModified" :key="note.id">
+                                <li
+                                    class="relative bg-white py-5 px-6 hover:bg-gray-50 focus-within:ring-2 focus-within:ring-inset focus-within:ring-blue-600">
+                                    <div class="flex justify-between space-x-3">
+                                        <a x-on:click.prevent="$store.notes.currentNotId=note.id" href="#"
+                                            class="block focus:outline-none">
+                                            <span class="absolute inset-0"></span>
+                                            <p x-text="note.title || 'Untitled Note'"
+                                                class="text-sm text-purple-600 truncate"></p>
+                                        </a>
+
+                                        <time x-text="formatDate(note.lastModified)"
+                                            class="flex-shrink-0 whitespace-nowrap text-sm text-green-800"></time>
+                                    </div>
+                                    <div class="mt-1">
+                                        <p class="text-sm text-gray-600"
+                                            x-text="note.body.substring(0,Math.min(6000,note.body.length))"></p>
+                                    </div>
+                                </li>
+                            </template>
+                        </ul>
+                    </nav>
+                </aside>
+            </main>
+        </div>
+    </div>
+</body>
+<script>
+    function formatDate(timestamp) {
+        const options = {
+            timeZone: 'Europe/Istanbul',
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: 'numeric'
+        };
+        const formattedDate = new Intl.DateTimeFormat('en-US', options).format(timestamp);
+        return formattedDate;
+    }
+
+    document.addEventListener('alpine:init', () => {
+        Alpine.store('notes', {
+            data: localStorage.getItem('notes') ? JSON.parse(localStorage.getItem('notes')) : [],
+            currentNotId: null,
+
+            setCurrentNoteByIndex(index) {
+                this.currentNotId = this.orderedByLastModified[index].id;
+            },
+
+            get orderedByLastModified() {
+                return this.data.sort((a, b) => {
+                    const aTimestamp = new Date(a.lastModified).getTime();
+                    const bTimestamp = new Date(b.lastModified).getTime();
+                    return bTimestamp - aTimestamp;
+                });
+            },
+
+            updateCurrentNoteTimeStamp() {
+                const currentNote = this.currentNoteData;
+                if (currentNote) {
+                    currentNote.lastModified = Date.now();
+                }
+            },
+
+            createNote() {
+                const id = Date.now();
+                const newNote = {
+                    id,
+                    title: '',
+                    body: '',
+                    lastModified: Date.now()
+                };
+
+                this.data.push(newNote);
+                this.currentNotId = id;
+                this.updateCurrentNoteTimeStamp();
+                this.persistNote();
+            },
+
+            persistNote() {
+                localStorage.setItem('notes', JSON.stringify(this.data));
+            },
+
+            get currentNoteData() {
+                return this.data.find(note => note.id === this.currentNotId);
+            },
+
+            deleteNote() {
+                this.data = this.data.filter(note => note.id !== this.currentNotId);
+                this.currentNotId = null;
+                this.persistNote();
+                this.init();
+            },
+
+            init() {
+                if (this.data.length === 0) {
+                    this.createNote();
+                } else {
+                    this.setCurrentNoteByIndex(0);
+                }
+            }
+        })
+    });
+</script>
+
+</html>
